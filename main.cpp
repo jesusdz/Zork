@@ -8,6 +8,10 @@
 #define MAX_ITEMS 2042
 #define MAX_ENTITIES (MAX_ROOMS + MAX_DOORS + MAX_ITEMS)
 
+#define MAX_ARG_COUNT 8
+#define MAX_ARG_LENGTH 32
+#define MAX_COMMANDLINE_LENGTH 256
+
 typedef int8_t int8;
 typedef int16_t int16;
 typedef int32_t int32;
@@ -17,8 +21,10 @@ typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
 
-void InputCommandline(char commandline[256])
+void InputCommandline(char commandline[MAX_COMMANDLINE_LENGTH])
 {
+	printf("\n>> ");
+
 	int ch;
 	int i = 0;
 
@@ -31,17 +37,17 @@ void InputCommandline(char commandline[256])
 			commandline[i] = ch;
 			++i;
 		}
-	} while (i < 255 && ch > 31 && ch != EOF);
+	} while (i < MAX_COMMANDLINE_LENGTH && ch > 31 && ch != EOF);
 
 	commandline[i] = 0;
 }
 
-int Tokenize(char commandline[256], char tokens[4][64])
+int Tokenize(const char commandline[MAX_COMMANDLINE_LENGTH], char tokens[MAX_ARG_COUNT][MAX_ARG_LENGTH])
 {
-	char *cptr = commandline;
+	const char *cptr = commandline;
 	int tokenId = 0;
 
-	while (tokenId < 4 && *cptr != '\0')
+	while (tokenId < MAX_ARG_COUNT && *cptr != '\0')
 	{
 		while (*cptr == ' ' || *cptr == '\t') cptr++;
 
@@ -209,7 +215,11 @@ void InitializeWorld(world *World)
 	World->ItemCount = 1;
 
 	room *Room = CreateRoom(World);
-	Room->Entity->Description = "The current room is dark and quiet. You can only see a subtle light coming from a narrow doorway in in the north wall.\n";
+	Room->Entity->Description = "The current room is dark and quiet. You can only see a subtle light coming from a narrow doorway in in the north wall.";
+
+	door *Door = CreateDoor(World);
+	Door->Entity->Name = "doorway";
+	Door->Entity->Description = "It is a scary narrow doorway that leads to a moisty corridor. You can see a subtle light on the other side.";
 
 	World->Player.CurrentRoom = Room;
 
@@ -236,33 +246,73 @@ room *GetCurrentRoom(world *World)
 	return CurrentRoom;
 }
 
-void UpdateWorld(world *World, const char *Arg1)
+void UpdateWorld(world *World, uint32 ArgCount, const char *Args[])
 {
-	if (SameString(Arg1, "look"))
+	if (SameString(Args[0], "look"))
 	{
 		room *CurrentRoom = GetCurrentRoom(World);
-		printf("%s", CurrentRoom->Entity->Description);
+
+		if (ArgCount == 1)
+		{
+			printf("%s", CurrentRoom->Entity->Description);
+		}
+		else
+		{
+			entity *FoundEntity = FindEntityInRoom(World, CurrentRoom, Args[1]);
+			if (FoundEntity != nullptr)
+			{
+				printf("%s", FoundEntity->Description);
+			}
+			else
+			{
+				printf("Cannot find anything such as '%s'", Args[1]);
+			}
+		}
 	}
-	else if (SameString(Arg1, "help"))
+	else if (SameString(Args[0], "help"))
 	{
 		printf("You can use the following commands to execute actions:\n");
 		printf("- look\n");
 		printf("- help\n");
-		printf("- quit/exit\n");
+		printf("- quit/exit");
 	}
+	else
+	{
+		printf("I don't understand that command...");
+	}
+
+	printf("\n");
 }
 
-void UpdateWorld(world *World, const char *Arg1, const char *Arg2)
+void UpdateWorld(world *World, uint32 ArgCount, const char Args[MAX_ARG_COUNT][MAX_ARG_LENGTH])
 {
-	if (SameString(Arg1, "look"))
+	const char *NewArgs[MAX_ARG_COUNT];
+	for (uint32 i = 0; i < ArgCount; ++i)
 	{
-		room *CurrentRoom = GetCurrentRoom(World);
-		entity *FoundEntity = FindEntityInRoom(World, CurrentRoom, Arg2);
-		if (FoundEntity != nullptr)
+		NewArgs[i] = Args[i];
+	}
+	UpdateWorld(World, ArgCount, NewArgs);
+}
+
+int UpdateWorld(world *World, const char *Commandline)
+{
+	char Tokens[MAX_ARG_COUNT][MAX_ARG_LENGTH];
+	int NumTokens = Tokenize(Commandline, Tokens);
+
+	if (NumTokens > 0)
+	{
+		if (SameString(Tokens[0], "quit") ||
+			SameString(Tokens[0], "exit"))
 		{
-			printf("%s\n", CurrentRoom->Entity->Description);
+			return 0;
+		}
+		else
+		{
+			UpdateWorld(World, NumTokens, Tokens);
 		}
 	}
+
+	return 1;
 }
 
 int main()
@@ -274,39 +324,21 @@ int main()
 
 	UpdateWorld(&World, "look");
 
-	char Commandline[256];
-	char Tokens[4][64];
+	char Commandline[MAX_COMMANDLINE_LENGTH];
 
 	while (1)
 	{
-		printf("\n>> ");
 		InputCommandline(Commandline);
 
-		int NumTokens = Tokenize(Commandline, Tokens);
-
-		if (NumTokens > 0)
+		int Continue = UpdateWorld(&World, Commandline);
+		if (Continue == 0)
 		{
-			if (SameString(Tokens[0], "quit") ||
-				SameString(Tokens[0], "exit"))
-			{
-				break;
-			}
-			else if (NumTokens == 1)
-			{
-				UpdateWorld(&World, Tokens[0]);
-			}
-			else if (NumTokens == 2)
-			{
-				// TODO(jesus): Function that takes 2 arguments
-			}
-			else if (NumTokens == 3)
-			{
-				// TODO(jesus): Function that takes 3 arguments
-			}
+			break;
 		}
 	}
 
-	printf("\nThanks for playing. See you soon!\n");
+	printf("\nThanks for playing Zork.\n");
+	printf("See you soon!\n\n");
 
 #ifdef _WIN32
 	system("pause");
