@@ -3,9 +3,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#define MAX_ROOMS 64
-#define MAX_DOORS 1024
-#define MAX_ITEMS 2042
+#define MAX_ROOMS 16
+#define MAX_DOORS (4 * MAX_ROOMS)
+#define MAX_ITEMS (4 * MAX_ROOMS)
 #define MAX_ENTITIES (MAX_ROOMS + MAX_DOORS + MAX_ITEMS)
 
 #define MAX_ARG_COUNT 8
@@ -108,6 +108,7 @@ struct entity
 
 struct player
 {
+	entity * Entity = nullptr;
 	room *CurrentRoom = nullptr;
 };
 
@@ -119,6 +120,7 @@ struct room
 struct item
 {
 	entity * Entity = nullptr;
+	const char *location;
 };
 
 struct door
@@ -154,6 +156,12 @@ entity *CreateEntity(world *World, entity *Parent = nullptr)
 	Result->Parent = Parent;
 	World->EntityCount++;
 	return Result;
+}
+
+void CreatePlayer(world *World)
+{
+	entity *Entity = CreateEntity(World);
+	World->Player.CurrentRoom = 0;
 }
 
 room *CreateRoom(world *World)
@@ -199,9 +207,31 @@ entity * FindEntityInRoom(world *World, room *Room, const char *EntityName)
 {
 	for (uint16 i = 1; i < World->EntityCount; ++i)
 	{
-		if (SameString(World->Entities[i].Name, EntityName))
+		entity * Entity = &World->Entities[i];
+
+		if (Entity->Parent == Room->Entity)
 		{
-			return &World->Entities[i];
+			if (SameString(Entity->Name, EntityName))
+			{
+				return &World->Entities[i];
+			}
+		}
+	}
+	return nullptr;
+}
+
+entity * FindEntityInInventory(world *World, const char *EntityName)
+{
+	for (uint16 i = 1; i < World->EntityCount; ++i)
+	{
+		entity * Entity = &World->Entities[i];
+
+		if (Entity->Parent == World->Player.Entity)
+		{
+			if (SameString(Entity->Name, EntityName))
+			{
+				return &World->Entities[i];
+			}
 		}
 	}
 	return nullptr;
@@ -214,12 +244,20 @@ void InitializeWorld(world *World)
 	World->DoorCount = 1;
 	World->ItemCount = 1;
 
+	CreatePlayer(World);
+
 	room *Room = CreateRoom(World);
 	Room->Entity->Description = "The current room is dark and quiet. You can only see a subtle light coming from a narrow doorway in in the north wall.";
 
 	door *Door = CreateDoor(World);
 	Door->Entity->Name = "doorway";
 	Door->Entity->Description = "It is a scary narrow doorway that leads to a moisty corridor. You can see a subtle light on the other side.";
+
+	item *Item = CreateItem(World);
+	Item->Entity->Parent = Room->Entity;
+	Item->Entity->Name = "dagger";
+	Item->Entity->Description = "It's a small shiny and sharp dagger.";
+	Item->location = "ground";
 
 	World->Player.CurrentRoom = Room;
 
@@ -248,17 +286,31 @@ room *GetCurrentRoom(world *World)
 
 void UpdateWorld(world *World, uint32 ArgCount, const char *Args[])
 {
+	room *CurrentRoom = GetCurrentRoom(World);
+
 	if (SameString(Args[0], "look"))
 	{
-		room *CurrentRoom = GetCurrentRoom(World);
-
 		if (ArgCount == 1)
 		{
 			printf("%s", CurrentRoom->Entity->Description);
+			for (uint16 i = 1; i < World->ItemCount; ++i)
+			{
+				item * Item = &World->Items[i];
+				entity * Entity = Item->Entity;
+
+				if (Entity->Parent == CurrentRoom->Entity)
+				{
+					printf(" There is a %s on the %s.", Entity->Name, Item->location);
+				}
+			}
 		}
-		else
+		else if (ArgCount == 2)
 		{
 			entity *FoundEntity = FindEntityInRoom(World, CurrentRoom, Args[1]);
+			if (FoundEntity == nullptr)
+			{
+				FoundEntity = FindEntityInInventory(World, Args[1]);
+			}
 			if (FoundEntity != nullptr)
 			{
 				printf("%s", FoundEntity->Description);
@@ -268,12 +320,74 @@ void UpdateWorld(world *World, uint32 ArgCount, const char *Args[])
 				printf("Cannot find anything such as '%s'", Args[1]);
 			}
 		}
+		else
+		{
+			printf("Invalid look command.");
+		}
+	}
+	else if (SameString(Args[0], "get"))
+	{
+		if (ArgCount == 2)
+		{
+			entity *FoundEntity = FindEntityInInventory(World, Args[1]);
+			if (FoundEntity == nullptr)
+			{
+				entity *FoundEntity = FindEntityInRoom(World, CurrentRoom, Args[1]);
+				FoundEntity->Parent = World->Player.Entity;
+				printf("Taken.");
+			}
+			else
+			{
+				printf("You already have this.");
+			}
+		}
+		else
+		{
+			printf("Invalid get command.");
+		}
+	}
+	else if (SameString(Args[0], "drop"))
+	{
+		if (ArgCount == 2)
+		{
+			entity *FoundEntity = FindEntityInInventory(World, Args[1]);
+			if (FoundEntity != nullptr)
+			{
+				FoundEntity->Parent = CurrentRoom->Entity;
+				printf("Dropped.");
+			}
+			else
+			{
+				printf("You don't own this.");
+			}
+		}
+		else
+		{
+			printf("Invalid drop command.");
+		}
+	}
+	else if (SameString(Args[0], "inventory"))
+	{
+		entity *PlayerEntity = World->Player.Entity;
+
+		printf("You are carrying the following items:");
+		for (uint32 i = 0; i < World->ItemCount; ++i)
+		{
+			entity *ItemEntity = World->Items[i].Entity;
+			if (ItemEntity != nullptr && ItemEntity->Parent == PlayerEntity)
+			{
+				printf("\n - %s\n", ItemEntity->Name);
+			}
+		}
 	}
 	else if (SameString(Args[0], "help"))
 	{
 		printf("You can use the following commands to execute actions:\n");
-		printf("- look\n");
+		printf("- drop\n");
+		printf("- get\n");
 		printf("- help\n");
+		printf("- inventory\n");
+		printf("- look\n");
 		printf("- quit/exit");
 	}
 	else
@@ -331,6 +445,7 @@ int main()
 		InputCommandline(Commandline);
 
 		int Continue = UpdateWorld(&World, Commandline);
+
 		if (Continue == 0)
 		{
 			break;
