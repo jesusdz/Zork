@@ -1,0 +1,38 @@
+
+" Windows specific, use NMake
+set makeprg=nmake\ /nologo
+
+function! s:MSBuild()
+
+	" Dont wait for key press
+	silent make
+
+	" Id of the last window (num windows)
+	let numWindows=winnr('$')
+
+	" Create at least a vertical split
+	if (numWindows < 2)
+		vnew
+	endif
+
+	" Open or go to quickfix
+	copen 30
+
+	" Move quickfix window to top if at bottom
+	if winnr() == winnr('$')
+		wincmd x
+	endif
+
+endfunction
+
+function! s:MSDebug()
+	silent make rundebug
+endfunction
+
+" Custom mappings
+nnoremap <leader>b :call <SID>MSBuild()<cr>
+
+" Build solution on <F7>
+nnoremap <F7> :call <SID>MSBuild()<cr>
+
+
