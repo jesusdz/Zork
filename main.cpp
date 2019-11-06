@@ -95,6 +95,22 @@ int SameString(const char *string1, const char *string2)
 	return *str1 == *str2;
 }
 
+internal
+int SameString(const char *toCompare, const char *opt1, const char *opt2)
+{
+	if (SameString(toCompare, opt1)) return 1;
+	if (SameString(toCompare, opt2)) return 1;
+	return false;
+}
+
+internal
+int SameString(const char *toCompare, const char *opt1, const char *opt2, const char *opt3)
+{
+	if (SameString(toCompare, opt1, opt2)) return 1;
+	if (SameString(toCompare, opt3)) return 1;
+	return false;
+}
+
 
 
 ////////////////////////////////////////////////////////////////////////
@@ -132,6 +148,8 @@ struct item
 	entity * Entity = nullptr;
 //	const char *location;
 	bool Collectable = false;
+	bool Openable = false;
+	bool Open = false;
 };
 
 struct link
@@ -225,6 +243,24 @@ item *CreateItem(world *World)
 }
 
 internal
+room *GetCurrentRoom(world *World)
+{
+	assert(World->Player.Entity != nullptr);
+	assert(World->Player.Entity->Parent != nullptr);
+	assert(World->Player.Entity->Parent->Room != nullptr);
+	room *CurrentRoom = World->Player.Entity->Parent->Room;
+	return CurrentRoom;
+}
+
+internal
+void SetCurrentRoom(world *World, room *Room)
+{
+	assert(Room->Entity != nullptr);
+	assert(World->Player.Entity != nullptr);
+	World->Player.Entity->Parent = Room->Entity;
+}
+
+internal
 entity * FindEntityInEntity(world *World, entity *ParentEntity, const char *EntityName)
 {
 	for (uint16 i = 0; i < World->EntityCount; ++i)
@@ -278,21 +314,96 @@ link * FindLinkInRoom(world *World, room *Room, const char *LinkNameOrLocation)
 }
 
 internal
-room *GetCurrentRoom(world *World)
+bool IsItemInInventory(world *World, item *Item)
 {
-	assert(World->Player.Entity != nullptr);
-	assert(World->Player.Entity->Parent != nullptr);
-	assert(World->Player.Entity->Parent->Room != nullptr);
-	room *CurrentRoom = World->Player.Entity->Parent->Room;
-	return CurrentRoom;
+	bool result = Item->Entity->Parent == World->Player.Entity;
+	return result;
 }
 
 internal
-void SetCurrentRoom(world *World, room *Room)
+bool IsItemInCurrentRoom(world *World, item *Item)
 {
-	assert(Room->Entity != nullptr);
-	assert(World->Player.Entity != nullptr);
-	World->Player.Entity->Parent = Room->Entity;
+	room *CurrentRoom = GetCurrentRoom(World);
+	entity *RoomEntity = CurrentRoom->Entity;
+	for (entity *CurrentEntity = Item->Entity;
+			CurrentEntity != nullptr;
+			CurrentEntity = CurrentEntity->Parent)
+	{
+		if (CurrentEntity == RoomEntity)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+internal
+void OpenItem(world *World, item *Item)
+{
+	assert(Item != nullptr);
+
+	if (Item->Openable)
+	{
+		if (Item->Open)
+		{
+			printf("It was already open");
+		}
+		else
+		{
+			Item->Open = true;
+			printf("Done.");
+		}
+	}
+	else
+	{
+		printf("Cannot be opened.");
+	}
+}
+
+internal
+void CloseItem(world *World, item *Item)
+{
+	assert(Item != nullptr);
+
+	if (Item->Openable)
+	{
+		if (Item->Open)
+		{
+			Item->Open = false;
+			printf("Done.");
+		}
+		else
+		{
+			printf("It was already closed.");
+		}
+	}
+	else
+	{
+		printf("Cannot be closed.");
+	}
+}
+
+internal
+item * FindItem(world *World, const char *ItemName)
+{
+	item *Result = nullptr;
+
+	for (uint16 i = 0; i < World->ItemCount; ++i)
+	{
+		item * Item = &World->Items[i];
+
+		if (IsItemInInventory(World, Item) ||
+				IsItemInCurrentRoom(World, Item))
+		{
+			if (SameString(ItemName, Item->Entity->Name))
+			{
+				Result = Item;
+				break;
+			}
+		}
+	}
+
+	return Result;
 }
 
 internal
@@ -315,6 +426,81 @@ room * FindNeighbouringRoom(world *World, const char *LinkNameOrLocation)
 	{
 		return nullptr;
 	}
+}
+
+internal
+void LookEntity(world *World, entity *Entity)
+{
+	printf("%s", Entity->Description);
+	if (Entity->Item != nullptr)
+	{
+		if (Entity->Item->Openable)
+		{
+			if(Entity->Item->Open)
+			{
+				printf("It is open.");
+			}
+			else
+			{
+				printf("It is closed.");
+			}
+		}
+	}
+}
+
+internal
+void PrintCurrentRoomDescription(world *World)
+{
+	room *CurrentRoom = GetCurrentRoom(World);
+
+	printf("%s\n", CurrentRoom->Entity->Description);
+	printf("You can also see the following objects:\n");
+
+	uint16 foundItemsCount = 0;
+	for (uint16 i = 0; i < World->ItemCount; ++i)
+	{
+		item * Item = &World->Items[i];
+		entity * Entity = Item->Entity;
+
+		if (Entity->Parent == CurrentRoom->Entity)
+		{
+			foundItemsCount++;
+			printf(" - %s\n", Entity->Name);
+		}
+	}
+
+	if (foundItemsCount == 0)
+	{
+		printf(" *** No objects at a glance ***\n");
+	}
+}
+internal
+void PrintInventory(world *World)
+{
+	entity *PlayerEntity = World->Player.Entity;
+
+	printf("You are carrying the following items:");
+	for (uint32 i = 0; i < World->ItemCount; ++i)
+	{
+		entity *ItemEntity = World->Items[i].Entity;
+		if (ItemEntity != nullptr && ItemEntity->Parent == PlayerEntity)
+		{
+			printf("\n - %s\n", ItemEntity->Name);
+		}
+	}
+}
+
+internal
+void PrintHelp()
+{
+	printf("You can use the following commands to execute actions:\n");
+	printf("- drop <item name>\n");
+	printf("- get/take <item name>\n");
+	printf("- go [to] <direction or location>\n");
+	printf("- help\n");
+	printf("- inventory\n");
+	printf("- look <item name>\n");
+	printf("- quit/exit");
 }
 
 int UpdateWorld(world *World, const char *Commandline);
@@ -356,23 +542,11 @@ void UpdateWorld(world *World, uint32 ArgCount, const char *Args[])
 			printf("Where do you want to go?");
 		}
 	}
-	else if (SameString(Args[0], "look"))
+	else if (SameString(Args[0], "look", "examine"))
 	{
 		if (ArgCount == 1)
 		{
-			printf("%s", CurrentRoom->Entity->Description);
-#if 0
-			for (uint16 i = 1; i < World->ItemCount; ++i)
-			{
-				item * Item = &World->Items[i];
-				entity * Entity = Item->Entity;
-
-				if (Entity->Parent == CurrentRoom->Entity)
-				{
-					printf(" There is a %s on the %s.", Entity->Name, Item->location);
-				}
-			}
-#endif
+			PrintCurrentRoomDescription(World);
 		}
 		else if (ArgCount == 2)
 		{
@@ -383,7 +557,7 @@ void UpdateWorld(world *World, uint32 ArgCount, const char *Args[])
 			}
 			if (FoundEntity != nullptr)
 			{
-				printf("%s", FoundEntity->Description);
+				LookEntity(World, FoundEntity);
 			}
 			else
 			{
@@ -395,7 +569,7 @@ void UpdateWorld(world *World, uint32 ArgCount, const char *Args[])
 			printf("Invalid look command.");
 		}
 	}
-	else if (SameString(Args[0], "get"))
+	else if (SameString(Args[0], "get", "take"))
 	{
 		if (ArgCount == 2)
 		{
@@ -453,28 +627,43 @@ void UpdateWorld(world *World, uint32 ArgCount, const char *Args[])
 	}
 	else if (SameString(Args[0], "inventory"))
 	{
-		entity *PlayerEntity = World->Player.Entity;
-
-		printf("You are carrying the following items:");
-		for (uint32 i = 0; i < World->ItemCount; ++i)
+		PrintInventory(World);
+	}
+	else if (SameString(Args[0], "open"))
+	{
+		if (ArgCount == 2)
 		{
-			entity *ItemEntity = World->Items[i].Entity;
-			if (ItemEntity != nullptr && ItemEntity->Parent == PlayerEntity)
-			{
-				printf("\n - %s\n", ItemEntity->Name);
-			}
+			item *Item = FindItem(World, Args[1]);
+			OpenItem(World, Item);
+		}
+		else if (ArgCount < 2)
+		{
+			printf("What do I have to open?");
+		}
+		else
+		{
+			printf("You will need to be more specific");
+		}
+	}
+	else if (SameString(Args[0], "close"))
+	{
+		if (ArgCount == 2)
+		{
+			item *Item = FindItem(World, Args[1]);
+			CloseItem(World, Item);
+		}
+		else if (ArgCount < 2)
+		{
+			printf("What do I have to close?");
+		}
+		else
+		{
+			printf("You will need to be more specific");
 		}
 	}
 	else if (SameString(Args[0], "help"))
 	{
-		printf("You can use the following commands to execute actions:\n");
-		printf("- drop <item name>\n");
-		printf("- get <item name>\n");
-		printf("- go [to] <direction or location>\n");
-		printf("- help\n");
-		printf("- inventory\n");
-		printf("- look <item name>\n");
-		printf("- quit/exit");
+		PrintHelp();
 	}
 	else
 	{
@@ -503,8 +692,7 @@ int UpdateWorld(world *World, const char *Commandline)
 
 	if (NumTokens > 0)
 	{
-		if (SameString(Tokens[0], "quit") ||
-			SameString(Tokens[0], "exit"))
+		if (SameString(Tokens[0], "quit", "exit", "q"))
 		{
 			return 0;
 		}
@@ -566,6 +754,8 @@ void InitializeWorld(world *World)
 	Item->Entity->Parent = Room2->Entity;
 	Item->Entity->Name = "door";
 	Item->Entity->Description = "Looks like this door is well closed. I'm going to need a key to open it.";
+	Item->Openable = true;
+	Item->Open = false;
 	//Item->location = "ground";
 
 

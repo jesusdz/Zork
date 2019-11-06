@@ -1,10 +1,11 @@
-.PHONY: default
-
 OUTPUT = zork
 SOURCES = main.cpp
-COMPILER_FLAGS = -g -Wall
+COMPILER_FLAGS =
 LINKER_FLAGS =
 
 default:
-	g++ -o ${OUTPUT} ${COMPILER_FLAGS} ${LINKER_FLAGS} ${SOURCES}
+	msbuild /nologo /verbosity:m Zork.sln
+
+rundebug:
+	devenv /nologo /debugexe x64\Debug\Zork.exe
 
