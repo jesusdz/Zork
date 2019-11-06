@@ -4,10 +4,8 @@ pull_requests:
 clone_depth: 1
 image: Visual Studio 2017
 configuration:
-  - Debug
   - Release
 platform:
-  - x86
   - x64
 matrix:
   fast_finish: true

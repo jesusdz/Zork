@@ -1,26 +1,34 @@
 
 " Windows specific, use NMake
-set makeprg=nmake\ /nologo
+set makeprg=nmake
+"set makeprg=nmake\ /f\ misc\\Makefile\ /nologo
 
 function! s:MSBuild()
 
 	" Dont wait for key press
-	silent make
+	cd misc
+	"silent make -f misc\Makefile -nologo
+	silent make -nologo
+	cd ..
 
 	" Id of the last window (num windows)
 	let numWindows=winnr('$')
 
+	copen
+
 	" Create at least a vertical split
-	if (numWindows < 2)
-		vnew
-	endif
+	if numWindows < 2
 
-	" Open or go to quickfix
-	copen 30
+		" Go to quickfix and move it to far right
+		wincmd L
 
-	" Move quickfix window to top if at bottom
-	if winnr() == winnr('$')
-		wincmd x
+	else
+
+		" Move quickfix window to top if at bottom
+		if winnr() == winnr('$')
+			wincmd x
+		endif
+
 	endif
 
 endfunction
